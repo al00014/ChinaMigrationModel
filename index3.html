@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<!-- from https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Manipulating_video_using_canvas -->
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" http-equiv="encoding">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <link   rel="stylesheet" type="text/css"
+    href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">  
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+  <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script> -->
+
+  <script src="https://unpkg.com/simple-statistics@5.2.1/dist/simple-statistics.min.js"></script>
+
+  <style>
+    body {
+      background:#3B3B3B;
+      color:#CCCCCC; 
+    }
+    #c2, #c3 {
+      background:#3B3B3B;
+    }
+    div {
+      /*float: left;*/
+      /*border :1px solid #444444;*/
+      /*padding:0px;*/
+      /*margin: 0px;*/
+      background:#3B3B3B;
+      /*width:initial;*/
+    }
+    /* width and height become video scrollWidth and scrollHeight */
+    /* parentElement clientHeight and scrollHeight is 6 more than height, clientWidth, scrollWidth are same as width */
+    /* original videoHeight and videoWidth are 480 and 640 (aspect ratio = 4:3 = 1.333) and this proportion is maintained */
+    #video {
+      width:100%;
+      height:100%;
+      /*object-fit: initial;*/
+      /*width: 640px;*/
+      /*height:480px;*/
+    }
+    #c1, #c2, #c3 {
+      width:100%;
+      height:100%;
+      /*width: 640px;*/
+      /*height:480px;*/
+    }
+    .well {
+      background:#3B3B3B;
+      border:  1px solid #3B3B3B;
+      color:   white;
+      padding: 5px;
+    }
+  </style>
+</head>
+
+<body>
+<!--   <div class="container"> -->
+    <div class="well">
+      <h2>BCA app</h2>
+      <h5>Begin by playing the video below, then scroll down:</h5>
+      <div class="select">
+        <label for="videoSource">Video source: </label><select id="videoSource"></select><input type="button" value="Refresh Page" onClick="window.location.reload()">
+      </div>
+    </div>
+
+
+    <div>
+      <video  id="video"  controls="true" autoplay></video>
+      <!-- <video  id="video" autoplay></video> -->
+    </div>
+<!-- Zoom control option can't be used: getCapabilities() is not recognized  -->
+<!--<div>
+      <input type="range" id="zoom">
+    </div> -->
+
+    <div class="well">
+      <h5>If video is working, click Start and line up the red crosses, then click Get data</h5>
+      <p id='deviceInfo'></p>
+      <p id='videoInfo'></p>
+    </div>
+
+    <div class="btn-group btn-group-justified">
+      <div class="btn-group">
+          <button type="button" class="btn btn-md btn-warning" id="takePicture" onclick="window.location.href='#savePicture'">Start</button>
+      </div>
+      <div class="btn-group">
+          <button type="button" class="btn btn-md btn-info"    id="savePicture" onclick="window.location.href='#c3Label'">Get data</button>
+      </div>
+    </div>
+
+    <div>
+      <canvas id="c2"></canvas>
+    </div>
+
+    <div class="well" id="c3Label">
+      <h5>Saved picture (go back up to try again):</h5>
+    </div>
+    <div>
+      <canvas id="c3"></canvas>
+    </div>
+
+    <div>
+      <h5>Capture camera photo using the Browse... button</h5>
+      <input  id="cameraInput" type="file" accept="image/*" capture>
+    </div>
+    <div>
+      <canvas id="camera"></canvas>
+    </div>
+
+    <div>
+      <canvas id="c1" hidden></canvas> 
+    </div>
+
+    <div class="btn-group btn-group-justified">
+      <div class="btn-group">
+          <button type="button" class="btn btn-md btn-primary" id="saveData"   onclick="window.location.href='#dataTable'">Save data into clipboard</button>
+      </div>
+      <div class="btn-group">
+          <button type="button" class="btn btn-md btn-danger"  id="showResult" onclick="window.location.href='#dataTable'">Show concentration</button>
+      </div>
+    </div>
+
+    <div class="well" style="display:none" id="concYdiv">
+      <h5 id="concY"></h5>
+    </div>
+
+    <div class="well">
+      <h5>Data:</h5>
+    </div>
+    <div class="well">
+      <table id="dataTable" style="background-color:white; color:black; width:100%; text-align:right"></table>
+    </div>
+
+    <div class="well" style="display:none" id="dataExceldiv">
+      <textarea id="dataExcel"   style="background-color:white; color:black; width:100%" rows="8"></textarea>
+    </div>
+  <!-- </div> -->
+</body>
+
+<script>
+// window.addEventListener("DOMContentLoaded", function() {
+
+  ////////// Take still image with camera //////////
+
+  var input = document.getElementById('cameraInput');     // get input element
+  input.onchange = function () {
+    var file = input.files[0];
+    drawOnCanvas(file);
+  }
+
+  function drawOnCanvas(file) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var dataURL = e.target.result,
+          c       = document.getElementById('camera'),
+          ctx     = c.getContext('2d'),
+          img     = new Image();
+
+      img.onload = function() {
+        c.width  = img.width;
+        c.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      };
+
+      img.src = dataURL;
+    };
+
+    reader.readAsDataURL(file);
+  }
+
+  var videoWidth,
+      videoHeight;
+
+  var c1    = document.getElementById('c1'),
+      c2    = document.getElementById('c2'),
+      c3    = document.getElementById('c3'),
+      zoom  = document.getElementById('zoom'),
+      ctx1  = c1.getContext('2d'),                 // canvas container used to draw graphics, getContext() is the object
+      ctx2  = c2.getContext('2d'),
+      ctx3  = c3.getContext('2d'),
+
+      errBack = function(error) {
+          console.log("Video capture error: ", error.code);
+      };
+
+  const video = document.getElementById('video');      
+  var   mediaStream;
+  var videoSelect = document.querySelector('select#videoSource');
+
+  // const mediaSource = new mediaSource();
+  // try {
+  //   video.srcObject = mediaSource;
+  // } catch (error) {
+  //   video.src = URL.createObjectURL(mediaSource);
+  // }
+
+  // Put video listeners into place
+
+  getCameraReady();
+  navigator.mediaDevices.enumerateDevices().then(gotDevices).catch(handleError);
+
+  function getCameraReady() {
+    if (window.stream) {
+      window.stream.getTracks().forEach(function(track) {                                 // stop any existing stream
+        track.stop();
+      });
+    }
+
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {                   // if device can handle media
+        
+    var videoSource = videoSelect.value;                                                  // videoSelect is set by gotDevices
+    var mediaConfig = {
+      video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+    };
+  
+        navigator.mediaDevices.getUserMedia(mediaConfig).then(async function(stream) {    // turn on
+
+          // if(navigator.mediaDevices.enumerateDevices()) {
+          //   console.log('enumerateDevices:', navigator.mediaDevices.enumerateDevices());
+          //   navigator.mediaDevices.enumerateDevices().then(function (deviceInfos) {
+          //     console.log('deviceInfos:', deviceInfos);
+          //     var deviceInfo = "";
+          //     for (let i = 0; i < deviceInfos.length; ++i) {
+          //       var deviceInfo = deviceInfos[i];
+          //       deviceInfo += deviceInfo.label + '<br>';
+          //     }
+          //     document.getElementById('deviceInfo').innerHTML = deviceInfo;
+          //   })
+          // }
+
+          // var videoTracks = stream.getVideoTracks();
+          // console.log('Got stream with constraints:', mediaConfig);
+          // console.log('Using video device: ' + videoTracks[0].label);
+          // window.stream = stream; // make variable available to console
+          // window.videoTracks = videoTracks;
+          // window.mediaConfig = mediaConfig;
+          // var videoInfo = "";
+          // for (let i = 0; i < videoTracks.length; ++i) {
+          //   videoInfo += videoTracks[i].label + '<br>';
+          // }
+          // videoInfo += mediaConfig.video;
+
+          // document.getElementById('videoInfo').innerHTML = videoInfo;
+
+          try {
+            video.srcObject = stream;
+          } catch (error) {
+            video.src = URL.createObjectURL(stream);
+          }
+          // setTimeout(function(){}, 1000);
+          // mediaStream = stream;
+          // var streamTrack  = stream.getVideoTracks()[0];
+
+          // var capabilities = streamTrack.getCapabilities();
+          // const settings     = streamTrack.getSettings();
+          // if (capabilities.zoom) {
+          //   zoom.min   = capabilities.zoom.min;
+          //   zoom.max   = capabilities.zoom.max;
+          //   zoom.step  = capabilities.zoom.step;
+          //   zoom.value = settings.zoom;
+          // }
+          // setTimeout(function(){}, 1000);
+
+        });
+    /* Legacy code below! */
+    } else if(navigator.getUserMedia) {                                             // Standard
+        navigator.getUserMedia(mediaConfig, function(stream) {
+          video.src = stream;
+          mediaStream = stream;
+        }, errBack);
+    } else if(navigator.webkitGetUserMedia) {                                       // WebKit-prefixed
+        navigator.webkitGetUserMedia(mediaConfig, function(stream){
+          video.src = window.webkitURL.createObjectURL(stream);
+          mediaStream = stream;
+        }, errBack);
+    } else if(navigator.mozGetUserMedia) {                                          // Mozilla-prefixed
+        navigator.mozGetUserMedia(mediaConfig, function(stream){
+          video.src = window.URL.createObjectURL(stream);
+          mediaStream = stream;
+        }, errBack);
+    }
+  }
+
+  ////////// COPY VIDEO TO CANVAS //////////
+
+  var xUpperLeft  =  0,
+      yUpperLeft  =  0,
+      videoWidth, videoHeight, xMargin, yMargin, xyPoints, xyHalfLength, xyLines, xyImageSize;
+  const   corners = ['A1','A5','H5','H1'];
+  var     xySign  = [[-1,-1],[1,-1],[1,1],[-1,1]];
+
+  function timerCallback() {                       // called when takePicture button is clicked
+    if (video.paused || video.ended) {             // return if paused or ended
+      return;
+    }
+    let timeoutInterval = 100;                     // timeout interval in ms
+    computeFrame();
+    setTimeout(
+      function() {timerCallback()},
+      timeoutInterval
+    );
+  }
+
+  function computeFrame() {
+    ctx1.drawImage(video, xUpperLeft, yUpperLeft, videoWidth, videoHeight);          // adjust due to default frame around original video
+    // ctx1.drawImage(video, 0,0,640 * 1,480 * 1, 0,0,640,480);
+    // console.log("video  width:  " + video.offsetWidth);
+    // console.log("video  height: " + video.offsetHeight);
+    // console.log("canvas width:  " + c1.width);
+    // console.log("canvas height: " + c1.height);
+
+    let frame  = ctx1.getImageData(xUpperLeft, yUpperLeft, videoWidth, videoHeight); // get the ImageData object
+
+    ctx2.putImageData(frame, xUpperLeft, yUpperLeft);
+
+    for (let i = 0; i < 4; i += 1) {
+      drawCross(ctx2,xyPoints[i][0],xyPoints[i][1],corners[i],xySign[i])
+    }
+  }
+
+  function drawCross(ctx,x,y,txt,sign) {
+    ctx.beginPath();
+    for (let j = 0; j < 4; j += 1) {                                                 // go to center
+      ctx.moveTo(x,y);
+      ctx.lineTo(x + xyLines[j][0],y + xyLines[j][1]);                               // draw four lines from center
+      ctx.strokeStyle = "red";
+      ctx.stroke();
+      if (txt !== undefined) {
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(txt,x+sign[0]*xySpan,y+sign[1]*xySpan);
+        ctx.fillStyle = 'red';
+      }
+    }
+  }
+
+  function getGreen(ctx,x,y,size) {
+    let img = ctx.getImageData(Math.round(x-size/2),Math.round(y-size/2),size,size);
+    let grn = [];
+    for (let i = 0; i < img.data.length; i += 4) {                                   // skip every 4 of RGBA
+      grn.push(img.data[i+1]);                                                       // pick out G
+    }
+    return ss.mean(grn);                                                             // take the average
+  }
+
+  ////////// SAVE PICTURE //////////
+  videoSelect.onchange = getCameraReady;
+
+  document.getElementById('takePicture').addEventListener("click", function () {
+    document.getElementById('concYdiv').style.display = "none";
+    videoWidth      = video.offsetWidth;                                             // don't use video.videoWidth!
+    videoHeight     = video.offsetHeight;
+    c1.width        = videoWidth;
+    c2.width        = videoWidth;
+    c3.width        = videoWidth;
+    c1.height       = videoHeight;
+    c2.height       = videoHeight;
+    c3.height       = videoHeight;
+    const xyMargin  = Math.round(videoHeight * 0.25);
+    ////////// videoWidth  = 2*xMargin + 4*xySpan         xySpan = (videoWidth  - 2*xMargin)/4
+    ////////// videoHeight = 2*yMargin + 7*xySpan                = (videoHeight - 2*yMargin)/7
+    xySpan          = ss.min([(videoWidth-2*xyMargin)/4, (videoHeight-2*xyMargin)/7]);
+    xMargin         = (videoWidth  - 4*xySpan)/2;
+    yMargin         = (videoHeight - 7*xySpan)/2;
+    xyPoints        = [
+      [           xMargin,            yMargin], [videoWidth-xMargin,            yMargin],
+      [videoWidth-xMargin,videoHeight-yMargin], [           xMargin,videoHeight-yMargin]
+    ];
+    xyHalfLength    = Math.round(xySpan / 4);
+    xyLines         = [
+      [xyHalfLength,0], [0,xyHalfLength], [-xyHalfLength,0], [0,-xyHalfLength]
+    ];
+    xyImageSize     = Math.round(xyHalfLength / 2);
+
+    timerCallback();   
+  })
+
+  var strData, tblData, concY;
+
+  document.getElementById('savePicture').addEventListener("click", function () {
+    document.getElementById('concYdiv').style.display = "none";
+    const results = savePicture();
+    const arrData = results[0];
+    concY   = results[1];
+    strData = "";
+    tblData = "";
+    for (let i = 0; i < arrData.length; i += 1) {
+      let arrDataRowi = arrData[i];                      // row i
+      tblData     += "<tr>";
+      for (let j = 0; j < arrDataRowi.length; j += 1) {
+        let ijData = arrDataRowi[j].toFixed(1);          // column j
+        strData += ijData + "\t";
+        tblData += "<td>" + ijData + "&nbsp</td>";
+      };
+      strData  = strData.slice(0,-1) + "\n";          // don't include the last \t (1 character)
+      tblData += "</tr>";
+    };
+    strData = strData.slice(0,-1);                    // get rid of last \n
+    document.getElementById('dataTable').innerHTML = tblData;
+  })
+
+  document.getElementById('saveData').addEventListener("click", function () {
+    let strHTML = document.getElementById('dataExcel');    // get the HTML element
+    document.getElementById('dataExceldiv').style.display = "block";
+    strHTML.value = strData;                          // insert data
+    strHTML.select();                                 // select the data
+    document.execCommand("Copy");    
+    document.getElementById('dataExceldiv').style.display = "none";
+  })
+
+  document.getElementById('showResult').addEventListener("click", function () {
+    document.getElementById('concY').innerHTML = "Concentration of specimen = " + concY.toFixed(2);
+    document.getElementById('concYdiv').style.display = "block";
+  })
+
+  function savePicture() {
+    let grnData = [];
+    let frame = ctx1.getImageData(                    // ImageData object with RGBA(alpha) values (0-255) stored in data property
+      xUpperLeft, yUpperLeft, videoWidth, videoHeight
+    );                                                // R = frame.data[0] etc.
+
+    ctx3.putImageData(frame, xUpperLeft, yUpperLeft); // put image in this location of this context
+    for (let j = 0; j < 8; j += 1) {                  // for each row
+      let grnDataj = [];                              // initialize data
+      let y = yMargin + xySpan*j;                     // get y value
+      for (let i = 0; i < 5; i += 1) {                // for each column
+        let x = xMargin + xySpan*i;                   // get x value
+        grnDataj.push(getGreen(ctx1,x,y,xyImageSize));// get color and push into jth row
+        drawCross(ctx3,x,y)                           // draw the cross
+      };
+      grnData.push(grnDataj);                         // push row into data array
+    }
+    const concY = getSlopeY(grnData);
+    return [grnData, concY];
+  }
+
+  function getSlopeY(gAll) {
+    const concBSA = [ 1/40,  1/8,  1/4,  1/2, 3/4, 1, 3/2, 2 ];  // BSA concentrations 
+    const ratioY  = [ 1/160, 1/80, 1/40, 1/20 ];
+    const concBSAmax = 1;                                        // maximum BSA concentration used
+    let   gBSA0s = [], gBSAs = [], gYs = [], BcB = 0, cB2 = 0, YrY = 0, rY2 = 0;
+    for (let j = 0; concBSA[j] <= concBSAmax; j += 1) {
+      let jBot = 7 - j;                                          // start from the bottom
+      gBSA0s.push(gAll[j][1]);                                   // baseline (water)
+      gBSAs.push(ss.mean([gAll[jBot][2],gAll[jBot][3]]));        // BSA
+      if (j < 4) {
+        gYs.push(ss.mean([gAll[jBot][4],gAll[jBot-4][4]]));      // specimen Y
+      };
+    };
+    const gBSA0 = ss.mean(gBSA0s);                               // average baseline
+    for (let j = 0; concBSA[j] <= concBSAmax; j += 1) {
+      gBSAs[j] -= gBSA0;                               // subtract baseline
+      BcB      += concBSA[j]*gBSAs[j];
+      cB2      += concBSA[j]*concBSA[j];
+      if (j < 4) {
+        gYs[j] -= gBSA0;                               // subtract baseline
+        YrY    += ratioY[j]*gYs[j];
+        rY2    += ratioY[j]*ratioY[j];
+      }
+    }
+    const sB    = BcB / cB2;
+    const sBY   = YrY / rY2;
+    const concY = sBY / sB;
+    return concY;
+  }
+
+// })
+
+
+
+function handleError(error) {
+  console.log('navigator.getUserMedia error: ', error);
+}
+
+function gotDevices(deviceInfos) {
+  // Handles being called several times to update labels. Preserve values.
+  while (videoSelect.firstChild) {
+    videoSelect.removeChild(videoSelect.firstChild);                              // clear the menu
+  }
+
+  for (var i = 0; i !== deviceInfos.length; ++i) {
+    var deviceInfo = deviceInfos[i];
+    var option = document.createElement('option');
+    option.value = deviceInfo.deviceId;
+    if (deviceInfo.kind === 'videoinput') {
+      option.text = deviceInfo.label || 'camera ' + (videoSelect.length + 1);
+      videoSelect.appendChild(option);
+    } else {
+      console.log('Some other kind of source/device: ', deviceInfo);
+    }
+  }
+
+  // if (Array.prototype.slice.call(videoSelect.childNodes).some(function(n) {
+  //   return n.value === values[selectorIndex];
+  // })) {
+  //   videoSelect.value = values[selectorIndex];
+  // }
+}
+
+
+</script>
+
+</html>
